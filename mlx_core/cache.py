@@ -11,7 +11,14 @@ class TurboQuantKVCache:
         self.head_dim = head_dim
         self.n_kv_heads = n_kv_heads
         
-        self.compressor = MLXTurboQuant(feature_dim=head_dim, pq_bits=pq_bits, qjl_features=qjl_features)
+        # Для Keys (ключей) важен точный Dot-Product во время Attention, поэтому берем весь конвейер TurboQuant
+        self.k_compressor = MLXTurboQuant(feature_dim=head_dim, pq_bits=pq_bits, qjl_features=qjl_features)
+        
+        # Для Values (значений) важна только минимальная ошибка MSE (Scalar Retrieval), 
+        # поэтому здесь QJL (остаток) избыточен. Берем голый PolarQuant.
+        from .mlx_polarquant import MLXPolarQuantCompressor
+        self.v_compressor = MLXPolarQuantCompressor(feature_dim=head_dim, bits=pq_bits)
+        
         self.offset = 0
         self.chunk_size = 64
         
@@ -22,14 +29,16 @@ class TurboQuantKVCache:
         self.value_buffer = None
 
     def _compress_and_store(self, k: mx.array, v: mx.array):
-        # k shape: (batch_size, n_kv_heads, seq_len, head_dim)
         b, h, s, d = k.shape
+        
+        # Сжимаем ключи через TurboQuant
         k_2d = mx.reshape(k, (-1, d))
-        compressed_k = self.compressor.compress(k_2d)
+        compressed_k = self.k_compressor.compress(k_2d)
         self.compressed_keys_chunks.append((compressed_k, (b, h, s, d)))
         
+        # Сжимаем значения через PolarQuant (экономим время и ресурсы)
         v_2d = mx.reshape(v, (-1, d))
-        compressed_v = self.compressor.compress(v_2d)
+        compressed_v = self.v_compressor.compress(v_2d)
         self.compressed_values_chunks.append((compressed_v, (b, h, s, d)))
 
     def update_and_fetch(self, keys: mx.array, values: mx.array) -> tuple[mx.array, mx.array]:
@@ -60,11 +69,13 @@ class TurboQuantKVCache:
         full_values = []
         
         for comp_k, shape in self.compressed_keys_chunks:
-            k_approx_2d = self.compressor.decompress(comp_k)
+            # Для восстановления ключей в float используем базис (PolarQuant), скрытый в decompress()
+            k_approx_2d = self.k_compressor.decompress(comp_k)
             full_keys.append(mx.reshape(k_approx_2d, shape))
             
         for comp_v, shape in self.compressed_values_chunks:
-            v_approx_2d = self.compressor.decompress(comp_v)
+            # Декомпрессируем значения напрямую из PolarQuant
+            v_approx_2d = self.v_compressor.decompress(comp_v)
             full_values.append(mx.reshape(v_approx_2d, shape))
             
         if self.key_buffer is not None:
@@ -76,28 +87,30 @@ class TurboQuantKVCache:
             
         return mx.concatenate(full_keys, axis=2), mx.concatenate(full_values, axis=2)
 
-def apply_turboquant_cache(model, bits: int = 3, qjl_features: int = 2048):
+    @property
+    def state(self):
+        # Поддержка mlx_lm API, чтобы внутренние фреймворки не ломались
+        k = self.key_buffer if self.key_buffer is not None else mx.array([])
+        v = self.value_buffer if self.value_buffer is not None else mx.array([])
+        return k, v
+
+def apply_turboquant_cache(model=None, bits: int = 3, qjl_features: int = 2048):
     """
     Monkey-patch / Hook для интеграции TurboQuant напрямик в любую LLM (Llama, Gemma) на mlx-lm.
-    Пробегает по слоям модели и подменяет экземпляр cache.
+    Подменяет сам генератор KVCache внутри фабрики моделей MLX.
     """
-    count = 0
-    # mlx.nn.Module имеет метод named_modules() для прохода по графу сети
-    if not hasattr(model, 'named_modules'):
-        print("[TurboQuant] Ошибка: Модель не является mlx.nn.Module")
+    try:
+        import mlx_lm.models.cache as cache_module
+    except ImportError:
+        print("[TurboQuant] Ошибка: mlx-lm не установлен.")
         return
         
-    for name, module in model.named_modules():
-        # У слоев Attention (напр. LlamaAttention) есть атрибут cache
-        if hasattr(module, "cache") and hasattr(module, "head_dim"):
-            n_kv = getattr(module, "n_kv_heads", module.n_heads) # Фолбэк если не GQA
+    # Создаем прокси-обертку, чтобы пробрасывать настройки компрессора
+    class PatchedCache(TurboQuantKVCache):
+        def __init__(self, head_dim: int, n_kv_heads: int, **kwargs):
+            super().__init__(head_dim=head_dim, n_kv_heads=n_kv_heads, pq_bits=bits, qjl_features=qjl_features)
+
+    # Глобально подменяем класс KVCache в модуле
+    cache_module.KVCache = PatchedCache
             
-            module.cache = TurboQuantKVCache(
-                head_dim=module.head_dim,
-                n_kv_heads=n_kv,
-                pq_bits=bits,
-                qjl_features=qjl_features
-            )
-            count += 1
-            
-    print(f"[TurboQuant] KV-Кэш успешно подменён: {count} Attention-слоев переведено на {bits}-битное сжатие.")
+    print(f"[TurboQuant] Глобальный патч установлен: mlx_lm.models.cache.KVCache подменен. Настройки сжатия: {bits} бит.")
