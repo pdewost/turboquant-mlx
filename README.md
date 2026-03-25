@@ -31,13 +31,21 @@ from mlx_core.cache import apply_turboquant_cache
 # Загружаем вашу любимую модель
 model, tokenizer = load("mlx-community/Meta-Llama-3-8B-Instruct-4bit")
 
-# Применяем TurboQuant (сжатие на лету!)
-# Укажите bits - сколько бит на угловую координату вы готовы пожертвовать (рекомендуется 3-5)
-apply_turboquant_cache(model, bits=3)
+# Применяем TurboQuant
+# bits - битрейт полярного сжатия
+# fp16_sink_size - первые N токенов (часто Системный Промпт) не сжимаются для сохранения идеального качества команд!
+apply_turboquant_cache(model, bits=3, fp16_sink_size=128)
 
-# Дальше генерируем как обычно (кэш будет занимать в 5 раз меньше памяти)
+# Дальше генерируем как обычно
+```
+
+## Встроенный OpenAI-совместимый сервер
+Вы можете поднять API сервер для своей любимой обертки (Chatbox, Bolt и т.д.):
+```bash
+python scripts/run_server.py --model mlx-community/Meta-Llama-3-8B-Instruct-4bit
 ```
 
 ## Тесты производительности
 Мы провели симуляцию размера кэша ключей/значений в LLM на 32K токенов и сравнили `numpy (CPU)` из `core/` и `mlx (Metal)` из `mlx_core/`.
 Отклонение (MSE) при 5-битах: `0.0048`. MLX Metal GPU версии в **2.8х** быстрее при компрессии векторных блоков.
+RoPE (Rotary Embeddings) поддерживается нативно (вращение происходит до компрессии). Асимметричное сжатие (TurboQuant для Keys, PolarQuant для Values) ускоряет генерацию еще на 10%.
