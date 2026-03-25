@@ -1,45 +1,45 @@
-# TurboQuant Mac — оперативная память проекта
+# TurboQuant Mac — Project Working Memory
 
-## Стек
+## Stack
 - Python 3 (pyproject.toml)
 - Apple MLX (`mlx.core`, Metal GPU acceleration)
 - `mlx_lm` (API integration and LLM generation)
 
-## Запуск
+## Quick Run
 ```bash
-# Установка как пакета
+# Package install
 pip install -e .
 
-# Поднятие сжатого API Сервера совместимого с OpenAI
+# Launch compressed OpenAI-compatible Server 
 python3 scripts/run_server.py --model mlx-community/Meta-Llama-3-8B-Instruct-4bit
 
-# Запуск тестов генерации на 5 моделях
+# Run generation tests across 5 models
 PYTHONPATH=. python3 scripts/run_needle_test.py
 ```
 
-## Архитектура
-Цель: реализовать алгоритмы QJL и PolarQuant для беспрецедентного сжатия KV Cache LLM до 3 бит без потерь.
-- `mlx_core/mlx_turboquant.py` — Metal-оптимизированный конвейер полного квантования (Keys)
-- `mlx_core/mlx_polarquant.py` — Быстрое MSE квантование (Values)
-- `mlx_core/cache.py` — Динамическая подмена класса `KVCache` для `mlx_lm` со вшитым чанкингом
-- `scripts/` — Удобные скрипты для тестов, локального сервера и EXO-кластера
+## Architecture
+Objective: Implement QJL and PolarQuant algorithms for unprecedented LLM KV Cache compression (down to 3 bits) without quality loss.
+- `mlx_core/mlx_turboquant.py` — Metal-optimized full quantization pipeline (Keys)
+- `mlx_core/mlx_polarquant.py` — Fast MSE quantization (Values)
+- `mlx_core/cache.py` — Dynamic class replacement for `mlx_lm`'s `KVCache` with integrated chunking
+- `scripts/` — Handful scripts for tests, local servers, and EXO-clusters
 
-## Ключевые решения
-- **Monkey-patch mlx_lm:** Интегрируемся напрямую в функцию `make_prompt_cache` и класс `KVCache`, что гарантирует сжатие во всех модулях Llama/Gemma.
-- **Асимметричное сжатие:** Keys сжимаются через сверхточный `TurboQuant`, а Values - через более легкий `PolarQuant`.
-- **Heavy Hitter Caching / FP16 Sink:** Первые 128 токенов (System Prompt) остаются без сжатия, спасая Instruction Following при экстремальном бит-рейте.
+## Key Design Decisions
+- **mlx_lm Monkey-patch:** Seamlessly integrates directly into `make_prompt_cache` and `KVCache`, guaranteeing memory compression across modules globally.
+- **Asymmetric Compression:** Keys are compressed via highly accurate `TurboQuant`, while Values are heavily shrunk via standard `PolarQuant`.
+- **Heavy Hitter Caching / FP16 Sink:** First 128 context tokens stay completely uncompressed, saving instruction-following metrics at extreme bitrates. 
 
-## Известные проблемы / Tech Debt
-- Написание кастомных `.metal` шейдеров отложено (пока питоновский API `mlx.core` справляется за счет lazy-вычислений).
-- Архитектуры Qwen/Gemma/Phi-3 менее стабильны с 3-битным кэшем на текущих гиперпараметрах, Llama 3 и 3.2 работают идеально.
+## Known Issues / Tech Debt
+- Writing custom `.metal` shaders is postponed (the Python `mlx.core` API is currently fast enough due to lazy graph compilation).
+- Architectures like Qwen/Gemma/Phi-3 exhibit more hallucination with 3-bit caches on current hyper-parameters, while Meta Llama 3 and 3.2 function flawlessly.
 
-## Что делали последним (2026-03-25)
-- Проект упакован в продакшен `pip`-пакет. Опубликовано на GitHub.
-- Написана интеграционная обертка `apply_turboquant_cache` (dynamic chunking по 64 токена) 
-- Добавлен точный счетчик памяти `memory_size` и скрипт интеграции с фреймворком EXO `run_exo_node.py`.
-- Протестирован стресс-тест *Needle-in-a-Haystack* на 5 моделях `mlx-community`. Семейство Meta Llama показало абсолютный иммунитет к 3-битному сжатию, сэкономив до 75% ОЗУ.
-- Написан благодарственный Issue коллегам из другого репозитория с советами от нашей архитектуры.
+## Recent Progress
+- Repackaged the architecture into a production `pip` distribution on GitHub.
+- Built an integration wrapper `apply_turboquant_cache` providing dynamic chunking (64 token splits).
+- Ported exact `memory_size` tracker and `run_exo_node.py` wrapper for EXO framework clusters.
+- Successfully executed the *Needle-in-a-Haystack* stress test. Meta Llama architectures proved to be fully immune to 3-bit compression, efficiently shedding ~75% of their RAM overhead footprint.
+- Fully localized repository to English (README, docs) for open-source adoption.
 
-## Следующие задачи
-1. Сбор обратной связи от комьюнити.
-2. Подбор гиперпараметров (Theta_bits, Radius_bits) для стабилизации GQA моделей от Google и Alibaba.
+## Next Steps
+1. Collect community feedback.
+2. Hyper-parameter tuning (Theta_bits, Radius_bits) to stabilize GQA architectures from Google and Alibaba.
