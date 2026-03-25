@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turboquant-mlx"
+version = "0.1.0"
+description = "TurboQuant: PolarQuant + QJL KV cache compression for Apple MLX"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "mlx>=0.14.0",
+    "numpy"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core", "mlx_core", "core.*", "mlx_core.*"]
