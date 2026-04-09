@@ -63,11 +63,19 @@ class TurboQuantKVCache:
             self.compress_k = self.k_theta_bits < 16
             self.compress_v = self.v_theta_bits < 16
             
-            from mlx_core.mlx_polarquant import MLXPolarQuantCompressor
+            from core.polarquant import PolarQuantCompressor
             if self.compress_k:
-                self.k_compressor = MLXPolarQuantCompressor(feature_dim=head_dim, theta_bits=self.k_theta_bits, radius_bits=self.k_radius_bits)
+                self.k_compressor = PolarQuantCompressor(
+                    feature_dim=head_dim, 
+                    theta_bits=self.k_theta_bits, 
+                    radius_bits=self.k_radius_bits
+                )
             if self.compress_v:
-                self.v_compressor = MLXPolarQuantCompressor(feature_dim=head_dim, theta_bits=self.v_theta_bits, radius_bits=self.v_radius_bits)
+                self.v_compressor = PolarQuantCompressor(
+                    feature_dim=head_dim, 
+                    theta_bits=self.v_theta_bits, 
+                    radius_bits=self.v_radius_bits
+                )
         
         self._initialized = True
 
