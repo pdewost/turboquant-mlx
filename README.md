@@ -91,8 +91,8 @@ TurboQuant is **not directly compatible with LM Studio**, as LM Studio uses its 
 
 To get compression benefits similar to TurboQuant in an interactive UI, use one of these alternatives:
 
-- **[Jan](https://jan.ai/)** — local AI client with MLX support, works seamlessly with `run_server.py` as a backend.
-- **[Chatbox](https://chatboxai.app/)** — connect to TurboQuant's OpenAI-compatible server (`run_server.py`) via `http://localhost:8080`.
+- **[Jan](https://jan.ai/)** — local AI client with MLX support, works seamlessly with `scripts/run_server.py` as a backend.
+- **[Chatbox](https://chatboxai.app/)** — connect to TurboQuant's OpenAI-compatible server (`scripts/run_server.py`) via `http://localhost:8080`.
 - **[Open WebUI](https://github.com/open-webui/open-webui)** — full-featured UI that connects to any OpenAI-compatible API.
 
 The recommended approach:
