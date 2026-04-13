@@ -63,7 +63,7 @@ class TurboQuantKVCache:
             self.compress_k = self.k_theta_bits < 16
             self.compress_v = self.v_theta_bits < 16
             
-            from core.polarquant import PolarQuantCompressor
+            from turboquant_mlx.polarquant import PolarQuantCompressor
             if self.compress_k:
                 self.k_compressor = PolarQuantCompressor(
                     feature_dim=head_dim, 
@@ -106,7 +106,7 @@ class TurboQuantKVCache:
         
         # 1. Логика Attention Sink (или Boundary Layers)
         if prev_offset < self.fp16_sink_size:
-            remaining_sink = self.fp16_sink_size - prev_offset
+            remaining_sink = int(min(self.fp16_sink_size - prev_offset, keys.shape[2]))
             
             # Забираем токены, которые влезают в Sink
             k_sink_part = keys[:, :, :remaining_sink, :]
